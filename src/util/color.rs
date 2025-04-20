@@ -1,9 +1,9 @@
+use comfy_table::modifiers::UTF8_ROUND_CORNERS;
+use comfy_table::{Cell, CellAlignment, Color, ContentArrangement, Table};
 use material_colors::color::Argb;
-use owo_colors::{OwoColorize, Style};
 
 use material_colors::palette::TonalPalette;
 use material_colors::theme::Palettes;
-use prettytable::{format, Cell, Row, Table};
 
 use colorsys::Rgb;
 
@@ -19,7 +19,16 @@ const DEFAULT_TONES: [i32; 18] = [
 ];
 
 pub fn show_color(schemes: &Schemes, source_color: &Argb) {
-    let mut table: Table = generate_table_format();
+    let mut table = Table::new();
+    table
+        .load_preset("││──├─┼┤│ │││┬┴┌┐└┘")
+        .apply_modifier(UTF8_ROUND_CORNERS)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("NAME").set_alignment(CellAlignment::Center),
+            Cell::new("LIGHT").set_alignment(CellAlignment::Center),
+            Cell::new("DARK").set_alignment(CellAlignment::Center),
+        ]);
 
     for ((field, color_light), (_, color_dark)) in std::iter::zip(&schemes.light, &schemes.dark) {
         let color_light: Rgb = rgb_from_argb(*color_light);
@@ -35,7 +44,7 @@ pub fn show_color(schemes: &Schemes, source_color: &Argb) {
         rgb_from_argb(*source_color),
     );
 
-    table.printstd();
+    println!("{table}")
 }
 
 #[cfg(feature = "dump-json")]
@@ -131,64 +140,52 @@ fn format_single_color(color: Rgb, format: &Format) -> String {
     fmt(color)
 }
 
-fn generate_table_format() -> Table {
-    let mut table = Table::new();
-    let format = format::FormatBuilder::new()
-        .column_separator('│')
-        .borders('│')
-        .separators(
-            &[format::LinePosition::Title],
-            format::LineSeparator::new('─', '┼', '├', '┤'),
-        )
-        .separators(
-            &[format::LinePosition::Top],
-            format::LineSeparator::new('─', '┬', '╭', '╮'),
-        )
-        .separators(
-            &[format::LinePosition::Bottom],
-            format::LineSeparator::new('─', '┴', '╰', '╯'),
-        )
-        .padding(1, 1)
-        .build();
-
-    table.set_format(format);
-
-    table.set_titles(Row::new(vec![
-        Cell::new("NAME").style_spec("c"),
-        Cell::new("LIGHT").style_spec("c"),
-        Cell::new("LIGHT").style_spec("c"),
-        Cell::new("DARK").style_spec("c"),
-        Cell::new("DARK").style_spec("c"),
-    ]));
-    table
-}
-
 fn generate_table_rows(table: &mut Table, field: &str, color_light: Rgb, color_dark: Rgb) {
-    let formatstr = "  ";
-
-    table.add_row(Row::new(vec![
-        // Color names
-        Cell::new(field).style_spec(""),
-        // Light scheme
-        Cell::new(color_light.to_hex_string().to_uppercase().as_str()).style_spec("c"),
-        Cell::new(format!("{}", formatstr.style(generate_style(&color_light))).as_str())
-            .style_spec("c"),
-        // Dark scheme
-        Cell::new(color_dark.to_hex_string().to_uppercase().as_str()).style_spec("c"),
-        Cell::new(format!("{}", formatstr.style(generate_style(&color_dark))).as_str())
-            .style_spec("c"),
-    ]));
+    table.add_row(vec![
+        Cell::new(field),
+        Cell::new(color_light.to_hex_string().to_uppercase())
+            .bg(Color::Rgb {
+                r: color_light.red() as u8,
+                g: color_light.green() as u8,
+                b: color_light.blue() as u8,
+            })
+            .fg(generate_wcag_fg(&color_light)),
+        Cell::new(color_dark.to_hex_string().to_uppercase())
+            .bg(Color::Rgb {
+                r: color_dark.red() as u8,
+                g: color_dark.green() as u8,
+                b: color_dark.blue() as u8,
+            })
+            .fg(generate_wcag_fg(&color_dark)),
+    ]);
 }
 
-fn generate_style(color: &Rgb) -> Style {
-    let luma = color.red() as u16 + color.blue() as u16 + color.green() as u16;
+fn generate_wcag_fg(color: &Rgb) -> Color {
+    let r = color.red() / 255.0;
+    let g = color.green() / 255.0;
+    let b = color.blue() / 255.0;
 
-    let owo_color: owo_colors::Rgb =
-        owo_colors::Rgb(color.red() as u8, color.green() as u8, color.blue() as u8);
-
-    if luma > 500 {
-        Style::new().black().on_color(owo_color)
+    let r = if r <= 0.03928 {
+        r / 12.92
     } else {
-        Style::new().white().on_color(owo_color)
+        ((r + 0.055) / 1.055).powf(2.4)
+    };
+    let g = if g <= 0.03928 {
+        g / 12.92
+    } else {
+        ((g + 0.055) / 1.055).powf(2.4)
+    };
+    let b = if b <= 0.03928 {
+        b / 12.92
+    } else {
+        ((b + 0.055) / 1.055).powf(2.4)
+    };
+
+    let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+    if luma > 0.179 {
+        Color::Black
+    } else {
+        Color::White
     }
 }
